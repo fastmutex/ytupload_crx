@@ -1,0 +1,21 @@
+{
+  "manifest_version": 3,
+  "name": "YT Upload",
+  "version": "1.0.0",
+  "description": "Upload videos to YouTube using your logged-in session",
+  "permissions": [
+    "cookies",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://www.youtube.com/*",
+    "https://studio.youtube.com/*",
+    "https://upload.youtube.com/*"
+  ],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}

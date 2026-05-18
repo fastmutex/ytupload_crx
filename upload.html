@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Upload Video – YT Upload</title>
+  <link rel="stylesheet" href="upload.css">
+</head>
+<body>
+  <div class="container">
+    <div class="card">
+      <div class="card-header">
+        <h1>Upload Video</h1>
+        <p class="subtitle">Using your YouTube session &mdash; no API key needed</p>
+      </div>
+      <div class="card-body">
+
+        <div id="dropzone" class="dropzone">
+          <svg viewBox="0 0 24 24" width="48" height="48">
+            <path fill="#909090" d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/>
+          </svg>
+          <p class="drop-text">Drag &amp; drop a video file</p>
+          <p class="drop-hint">or click to browse</p>
+        </div>
+        <input type="file" id="fileInput" accept="video/*" hidden>
+
+        <div id="fileInfo" class="file-info hidden">
+          <span id="fileName" class="file-name"></span>
+          <span id="fileSize" class="file-size"></span>
+        </div>
+
+        <div class="field">
+          <label for="title">Title <span class="req">*</span></label>
+          <input type="text" id="title" maxlength="100"
+                 placeholder="Add a title that describes your video">
+        </div>
+
+        <div class="field">
+          <label for="description">Description</label>
+          <textarea id="description" rows="4" maxlength="5000"
+                    placeholder="Tell viewers about your video"></textarea>
+        </div>
+
+        <div class="row">
+          <div class="field half">
+            <label for="privacy">Visibility</label>
+            <select id="privacy">
+              <option value="PRIVATE">Private</option>
+              <option value="UNLISTED">Unlisted</option>
+              <option value="PUBLIC">Public</option>
+            </select>
+          </div>
+          <div class="field half">
+            <label for="tags">Tags</label>
+            <input type="text" id="tags" placeholder="tag1, tag2, tag3">
+          </div>
+        </div>
+
+        <div id="progressWrap" class="progress-wrap hidden">
+          <div class="progress-track">
+            <div id="progressFill" class="progress-fill"></div>
+          </div>
+          <span id="progressPct" class="progress-pct">0%</span>
+        </div>
+
+        <div id="status" class="status"></div>
+        <button id="uploadBtn" class="btn" disabled>Upload Video</button>
+      </div>
+    </div>
+  </div>
+  <script src="upload.js"></script>
+</body>
+</html>
