@@ -1,3 +1,7 @@
+chrome.action.onClicked.addListener(() => {
+  chrome.tabs.create({ url: chrome.runtime.getURL('upload.html') });
+});
+
 chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
   if (msg.type === 'YT_FETCH') {
     handleYTFetch(msg.args)

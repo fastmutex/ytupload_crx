@@ -49,6 +49,41 @@ body {
   color: #909090;
 }
 
+/* Cookie status */
+
+.cookie-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #606060;
+}
+
+.cookie-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #909090;
+  flex-shrink: 0;
+}
+
+.cookie-status.ok .cookie-dot {
+  background: #0a7e07;
+}
+
+.cookie-status.ok .cookie-text {
+  color: #0a7e07;
+}
+
+.cookie-status.fail .cookie-dot {
+  background: #c00;
+}
+
+.cookie-status.fail .cookie-text {
+  color: #c00;
+}
+
 .card-body {
   padding: 24px;
 }

@@ -7,6 +7,7 @@
   document.addEventListener('DOMContentLoaded', () => {
     bindEvents();
     checkLogin();
+    checkCookieStatus();
   });
 
   // ── Auth check ─────────────────────────────────────────────
@@ -32,6 +33,21 @@
         'Not logged in to YouTube.\nPlease log in at youtube.com first, then reload this page.',
         'error'
       );
+    }
+  }
+
+  // ── Cookie status ──────────────────────────────────────────
+
+  async function checkCookieStatus() {
+    const el = document.getElementById('cookieStatus');
+    const textEl = el.querySelector('.cookie-text');
+    const sapisid = await getSAPISID();
+    if (sapisid) {
+      el.className = 'cookie-status ok';
+      textEl.textContent = 'YouTube session active';
+    } else {
+      el.className = 'cookie-status fail';
+      textEl.textContent = 'No YouTube session — log in at youtube.com';
     }
   }
 

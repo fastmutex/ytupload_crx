@@ -12,9 +12,7 @@
     "https://studio.youtube.com/*",
     "https://upload.youtube.com/*"
   ],
-  "action": {
-    "default_popup": "popup.html"
-  },
+  "action": {},
   "background": {
     "service_worker": "background.js"
   }
