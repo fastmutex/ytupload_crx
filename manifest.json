@@ -1,19 +1,22 @@
 {
   "manifest_version": 3,
-  "name": "YT Upload",
-  "version": "1.0.0",
-  "description": "Upload videos to YouTube using your logged-in session",
-  "permissions": [
-    "cookies",
-    "scripting"
-  ],
+  "name": "YT Bulk Upload",
+  "version": "2.0.0",
+  "description": "Bulk-upload many videos to YouTube Studio in one pick, bypassing the 15-file selection limit",
   "host_permissions": [
-    "https://www.youtube.com/*",
-    "https://studio.youtube.com/*",
-    "https://upload.youtube.com/*"
+    "https://studio.youtube.com/*"
   ],
-  "action": {},
+  "action": {
+    "default_title": "Open YouTube Studio bulk upload"
+  },
   "background": {
     "service_worker": "background.js"
-  }
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://studio.youtube.com/*"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
 }
