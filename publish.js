@@ -11,6 +11,7 @@
 
   const {
     deepQueryAll,
+    isVisible,
     sleep,
     waitForElementDeep,
     fireClick,
@@ -36,10 +37,6 @@
   const VISIBILITY_STEPPER_SELECTOR = '#step-badge-3';
   const VISIBILITY_PAPER_BUTTONS_SELECTOR = 'tp-yt-paper-radio-group';
   const SAVE_BUTTON_SELECTOR = '#done-button';
-  const SUCCESS_ELEMENT_SELECTOR = 'ytcp-video-thumbnail-with-info';
-  const DIALOG_SELECTOR =
-    'ytcp-dialog.ytcp-video-share-dialog > tp-yt-paper-dialog:nth-child(1)';
-  const DIALOG_CLOSE_BUTTON_SELECTOR = '#close-button';
 
   // If the video is still in the "Checking" phase, clicking Done pops a
   // pre-checks warning ("We're still checking your content") with
@@ -61,6 +58,35 @@
       await sleep(100);
     }
     return false;
+  }
+
+  // Find a currently-visible dialog "close" control (the share screen, plus any
+  // follow-up confirmation). Matches Studio's #close-button and generic
+  // Close/Dismiss buttons, but never our own toggle (it has no such id/label).
+  function findVisibleCloseButton() {
+    const candidates = [
+      ...deepQueryAll('#close-button'),
+      ...deepQueryAll('button[aria-label="Close"]'),
+      ...deepQueryAll('button[aria-label="Dismiss"]'),
+    ];
+    return candidates.find(isVisible) || null;
+  }
+
+  // Publishing can surface more than one dialog in sequence (share screen, then
+  // an extra confirmation). Close each visible one for a few rounds.
+  async function closeAfterPublish(rounds = 3) {
+    for (let i = 0; i < rounds; i++) {
+      let btn = null;
+      const deadline = Date.now() + 5000;
+      while (Date.now() < deadline) {
+        btn = findVisibleCloseButton();
+        if (btn) break;
+        await sleep(150);
+      }
+      if (!btn) break; // nothing left to close
+      fireClick(btn);
+      await sleep(400);
+    }
   }
 
   // Publish a single draft row through Studio's draft modal. This mirrors the
@@ -112,16 +138,8 @@
     // The video may still be in the "Checking" phase — if Studio warns, publish anyway.
     await confirmPublishAnyway();
 
-    // Wait for the publish to settle, then dismiss the share dialog.
-    await waitForElementDeep(SUCCESS_ELEMENT_SELECTOR, document, 15000);
-    const dialog = await waitForElementDeep(DIALOG_SELECTOR, document, 10000);
-    if (dialog) {
-      const closeBtn = await waitForElementDeep(DIALOG_CLOSE_BUTTON_SELECTOR, dialog, 5000);
-      if (closeBtn) {
-        fireClick(closeBtn);
-        await sleep(50);
-      }
-    }
+    // Dismiss the share screen and any follow-up confirmation dialog(s).
+    await closeAfterPublish();
     await sleep(100);
   }
 
