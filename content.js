@@ -1,39 +1,31 @@
 (() => {
   'use strict';
 
-  if (window.__ytBulkUploadInjected) return;
-  window.__ytBulkUploadInjected = true;
+  // Bulk-upload feature. Relies on shared helpers loaded by shared.js.
+  const NS = window.__YTBU;
+  if (!NS) {
+    console.error('[YT Bulk Upload] shared.js did not load before content.js');
+    return;
+  }
 
-  console.log('[YT Bulk Upload] content script loaded:', location.href);
+  const {
+    deepQueryAll,
+    findElementByText,
+    isVisible,
+    sleep,
+    waitFor,
+    setStatus,
+    ensureControls,
+    button,
+    runExclusive,
+    registerInjector,
+  } = NS;
 
   const BATCH_SIZE = 15; // Studio's per-selection cap; used only if feed-all is rejected
   const SETTLE_MS = 1500;
+  const SOURCE_INPUT_ID = 'yt-bulk-source-input';
 
   let pickedFiles = [];
-
-  // ── Shadow-DOM-aware querying ──────────────────────────────
-
-  function deepQueryAll(selector, root = document) {
-    const out = [];
-    const walk = (node) => {
-      let matches = [];
-      try {
-        matches = node.querySelectorAll(selector);
-      } catch {
-        matches = [];
-      }
-      out.push(...matches);
-      // Recurse into shadow roots
-      const all = node.querySelectorAll('*');
-      for (const el of all) {
-        if (el.shadowRoot) walk(el.shadowRoot);
-      }
-    };
-    walk(root);
-    return out;
-  }
-
-  const SOURCE_INPUT_ID = 'yt-bulk-source-input';
 
   function findUploadInput() {
     // Exclude our own hidden picker input (it also has accept="video/*").
@@ -44,19 +36,6 @@
       (i.getAttribute('accept') || '').toLowerCase().includes('video')
     );
     return best || inputs[0] || null;
-  }
-
-  function findElementByText(selectors, text) {
-    const wanted = text.toLowerCase();
-    for (const sel of selectors) {
-      const els = deepQueryAll(sel);
-      for (const el of els) {
-        if ((el.textContent || '').trim().toLowerCase().includes(wanted)) {
-          return el;
-        }
-      }
-    }
-    return null;
   }
 
   // ── Open Studio's upload dialog ────────────────────────────
@@ -117,12 +96,6 @@
     target.dispatchEvent(new DragEvent('drop', { ...opts, dataTransfer: dt }));
   }
 
-  function isVisible(el) {
-    if (!el) return false;
-    const r = el.getBoundingClientRect();
-    return r.width > 0 && r.height > 0;
-  }
-
   function pickerVisible() {
     return deepQueryAll('ytcp-uploads-file-picker').some(isVisible);
   }
@@ -130,25 +103,6 @@
   // Per-file upload status rows in the multi-progress monitor popup.
   function progressStatusRows() {
     return deepQueryAll('.progress-status-text');
-  }
-
-  // True once Studio has accepted files (the progress monitor appears).
-  function uploadsAccepted() {
-    if (progressStatusRows().length > 0) return true;
-    if (deepQueryAll('ytcp-multi-progress-monitor').some(isVisible)) return true;
-    if (!pickerVisible() && deepQueryAll('ytcp-uploads-dialog').some(isVisible)) {
-      return true;
-    }
-    return false;
-  }
-
-  async function waitFor(predicate, timeoutMs) {
-    const start = Date.now();
-    while (Date.now() - start < timeoutMs) {
-      if (predicate()) return true;
-      await sleep(250);
-    }
-    return predicate();
   }
 
   // Header summary text, e.g. "Uploading 8 of 15 · 9 seconds left".
@@ -305,34 +259,15 @@
     setStatus(`Done. Uploaded ${files.length} files in ${batches.length} batch(es) as drafts.`);
   }
 
-  function sleep(ms) {
-    return new Promise((r) => setTimeout(r, ms));
-  }
-
   // ── UI ─────────────────────────────────────────────────────
 
-  function injectUI() {
+  registerInjector(function injectUpload() {
     if (document.getElementById('yt-bulk-upload-btn')) return;
+    const body = ensureControls();
+    if (!body) return;
 
-    const btn = document.createElement('button');
+    const btn = button('⬆ Bulk Upload', '#065fd4');
     btn.id = 'yt-bulk-upload-btn';
-    btn.textContent = '⬆ Bulk Upload';
-    Object.assign(btn.style, {
-      position: 'fixed',
-      bottom: '20px',
-      right: '20px',
-      zIndex: '2147483647',
-      padding: '12px 18px',
-      background: '#065fd4',
-      color: '#fff',
-      border: 'none',
-      borderRadius: '24px',
-      fontSize: '14px',
-      fontWeight: '600',
-      fontFamily: 'Roboto, Arial, sans-serif',
-      cursor: 'pointer',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-    });
 
     const input = document.createElement('input');
     input.id = SOURCE_INPUT_ID;
@@ -341,81 +276,16 @@
     input.accept = 'video/*';
     input.style.display = 'none';
 
-    const status = document.createElement('div');
-    status.id = 'yt-bulk-upload-status';
-    Object.assign(status.style, {
-      position: 'fixed',
-      bottom: '64px',
-      right: '20px',
-      zIndex: '2147483647',
-      maxWidth: '320px',
-      padding: '10px 14px',
-      background: '#222',
-      color: '#fff',
-      borderRadius: '8px',
-      fontSize: '13px',
-      fontFamily: 'Roboto, Arial, sans-serif',
-      boxShadow: '0 2px 8px rgba(0,0,0,0.3)',
-      display: 'none',
-      whiteSpace: 'pre-wrap',
-    });
-
     btn.addEventListener('click', () => input.click());
-
-    let busy = false;
-    input.addEventListener('change', async () => {
-      if (busy) return;
+    input.addEventListener('change', () => {
       pickedFiles = Array.from(input.files || []);
       input.value = ''; // allow re-pick of same files
       if (pickedFiles.length === 0) return;
-      busy = true;
-      btn.disabled = true;
-      try {
-        await feedAll(pickedFiles);
-      } catch (e) {
-        setStatus('Error: ' + e.message);
-      } finally {
-        busy = false;
-        btn.disabled = false;
-      }
+      runExclusive(() => feedAll(pickedFiles));
     });
 
-    if (!document.body) return;
-    document.body.appendChild(btn);
-    document.body.appendChild(input);
-    document.body.appendChild(status);
-    console.log('[YT Bulk Upload] button injected');
-  }
-
-  function setStatus(msg) {
-    const el = document.getElementById('yt-bulk-upload-status');
-    if (el) {
-      el.style.display = 'block';
-      el.textContent = msg;
-    }
-    console.log('[YT Bulk Upload]', msg);
-  }
-
-  // Studio is a SPA; keep the button present across navigations.
-  function ensureUI() {
-    if (document.body) {
-      injectUI();
-    } else {
-      setTimeout(ensureUI, 200);
-    }
-  }
-  ensureUI();
-
-  // Re-inject if Studio's SPA navigation tears down the body, but throttle so
-  // we don't run on every mutation of a heavy app.
-  let scheduled = false;
-  const obs = new MutationObserver(() => {
-    if (scheduled) return;
-    scheduled = true;
-    setTimeout(() => {
-      scheduled = false;
-      if (!document.getElementById('yt-bulk-upload-btn')) injectUI();
-    }, 500);
+    body.appendChild(btn);
+    body.appendChild(input);
+    console.log('[YT Bulk Upload] upload button injected');
   });
-  obs.observe(document.documentElement, { childList: true, subtree: true });
 })();
