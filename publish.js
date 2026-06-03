@@ -41,6 +41,28 @@
     'ytcp-dialog.ytcp-video-share-dialog > tp-yt-paper-dialog:nth-child(1)';
   const DIALOG_CLOSE_BUTTON_SELECTOR = '#close-button';
 
+  // If the video is still in the "Checking" phase, clicking Done pops a
+  // pre-checks warning ("We're still checking your content") with
+  // "Publish anyway" / "Go back". Click "Publish anyway" to proceed; returns
+  // true if such a dialog was found and dismissed.
+  async function confirmPublishAnyway(timeoutMs = 4000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const btn = deepQueryAll('button').find((el) => {
+        const label = (el.getAttribute('aria-label') || '').trim().toLowerCase();
+        const text = (el.textContent || '').trim().toLowerCase();
+        return label === 'publish anyway' || text === 'publish anyway';
+      });
+      if (btn) {
+        fireClick(btn);
+        await sleep(100);
+        return true;
+      }
+      await sleep(100);
+    }
+    return false;
+  }
+
   // Publish a single draft row through Studio's draft modal. This mirrors the
   // console script step-for-step: open the draft, pick the audience, jump to the
   // visibility step, choose the visibility, save, then close the share dialog.
@@ -86,6 +108,9 @@
     const saveBtn = await waitForElementDeep(SAVE_BUTTON_SELECTOR, modal, 10000);
     if (!saveBtn) throw new Error('save (done) button not found');
     fireClick(saveBtn);
+
+    // The video may still be in the "Checking" phase — if Studio warns, publish anyway.
+    await confirmPublishAnyway();
 
     // Wait for the publish to settle, then dismiss the share dialog.
     await waitForElementDeep(SUCCESS_ELEMENT_SELECTOR, document, 15000);
