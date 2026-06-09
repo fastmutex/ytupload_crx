@@ -11,6 +11,11 @@
   const NS = {};
   window.__YTBU = NS;
 
+  // Which surface are we on? Upload/publish live on Studio; sort-playlist lives
+  // on the main site's playlist pages.
+  const isStudio = location.hostname === 'studio.youtube.com';
+  const isYouTube = location.hostname === 'www.youtube.com';
+
   // ── Shadow-DOM-aware querying ──────────────────────────────
 
   function deepQueryAll(selector, root = document) {
@@ -361,6 +366,8 @@
   // ── Export ─────────────────────────────────────────────────
 
   Object.assign(NS, {
+    isStudio,
+    isYouTube,
     deepQueryAll,
     findElementByText,
     isVisible,

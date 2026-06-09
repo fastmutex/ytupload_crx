@@ -262,6 +262,7 @@
   // ── UI ─────────────────────────────────────────────────────
 
   registerInjector(function injectUpload() {
+    if (!NS.isStudio) return; // uploading only happens in Studio
     if (document.getElementById('yt-bulk-upload-btn')) return;
     const body = ensureControls();
     if (!body) return;
