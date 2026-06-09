@@ -174,20 +174,42 @@
   }
 
   // ── Sort: selectors (verbatim from the console script) ─────
-  // NOTE: these are ytd-* (youtube.com) components, not Studio's ytcp-*.
-  // Flagged for live verification; adjust if the playlist page differs.
+  // These are ytd-* components on www.youtube.com playlist pages (not Studio),
+  // which is why the sort button only injects on the main site.
 
   const PLAYLIST_VIDEO_SELECTOR = 'ytd-playlist-video-renderer';
   const PLAYLIST_TITLE_SELECTOR = '#video-title';
   const SORTING_MENU_BUTTON_SELECTOR = 'button';
   const SORTING_ITEM_MENU_SELECTOR = 'tp-yt-paper-listbox#items';
   const SORTING_ITEM_MENU_ITEM_SELECTOR = 'ytd-menu-service-item-renderer';
-  const MOVE_TO_BOTTOM_INDEX = 5;
+  const MOVE_TO_BOTTOM_INDEX = 5; // fallback if the label can't be matched
 
-  const SORTING_KEY = (a, b) =>
-    a.name.localeCompare(b.name, undefined, { numeric: true, sensitivity: 'base' });
+  // Titles are prefixed with an order number, e.g. "01 abc", "02 def". Sort by
+  // that leading number ascending; titles without one fall back to natural
+  // (numeric-aware) name order and sort after the numbered ones.
+  function orderNumber(name) {
+    const m = name.match(/^\s*(\d+)/);
+    return m ? parseInt(m[1], 10) : Number.MAX_SAFE_INTEGER;
+  }
 
-  async function moveToBottom(row) {
+  function compareNames(a, b) {
+    const na = orderNumber(a);
+    const nb = orderNumber(b);
+    if (na !== nb) return na - nb;
+    return a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+  }
+
+  function rowName(row) {
+    return (deepQueryAll(PLAYLIST_TITLE_SELECTOR, row)[0]?.textContent || '').trim();
+  }
+
+  // Re-read the live rows each time — every "move to bottom" re-renders the list,
+  // so cached element references go stale.
+  function currentRows() {
+    return deepQueryAll(PLAYLIST_VIDEO_SELECTOR);
+  }
+
+  async function moveRowToBottom(row) {
     const menuBtn = deepQueryAll(SORTING_MENU_BUTTON_SELECTOR, row)[0];
     if (!menuBtn) throw new Error('row menu button not found');
     fireClick(menuBtn);
@@ -197,95 +219,103 @@
     await waitForElementDeep(SORTING_ITEM_MENU_ITEM_SELECTOR, listbox, 5000);
 
     const items = deepQueryAll(SORTING_ITEM_MENU_ITEM_SELECTOR, listbox);
-    const moveBottom = items[MOVE_TO_BOTTOM_INDEX];
+    const moveBottom =
+      items.find((it) => (it.textContent || '').trim().toLowerCase().includes('move to bottom')) ||
+      items[MOVE_TO_BOTTOM_INDEX];
     if (!moveBottom) throw new Error('"move to bottom" menu item not found');
     fireClick(moveBottom);
   }
 
   async function sortPlaylist() {
-    const rows = deepQueryAll(PLAYLIST_VIDEO_SELECTOR);
-    if (rows.length === 0) {
+    const names = currentRows().map(rowName).filter(Boolean);
+    if (names.length === 0) {
       setStatus('No playlist videos found on this page.');
       return;
     }
-    const items = rows
-      .map((raw) => ({
-        raw,
-        name: (deepQueryAll(PLAYLIST_TITLE_SELECTOR, raw)[0]?.textContent || '').trim(),
-      }))
-      .sort(SORTING_KEY);
+    const order = [...names].sort(compareNames);
+    setStatus(`Sorting ${order.length} playlist video(s) by order number…`);
 
-    setStatus(`Sorting ${items.length} playlist video(s) by name…`);
-
-    // Moving each item (in sorted order) to the bottom one by one leaves the
-    // playlist sorted ascending.
+    // Walk the desired order and push each title to the bottom in turn. Doing it
+    // in ascending order leaves the playlist ascending. Re-find the row by title
+    // every step so we never act on a stale (re-rendered) element.
     let done = 0;
-    for (const item of items) {
+    for (const name of order) {
       try {
-        await moveToBottom(item.raw);
+        const row = currentRows().find((r) => rowName(r) === name);
+        if (!row) {
+          console.warn('[YT Bulk Upload] row not found (off-screen?):', name);
+        } else {
+          await moveRowToBottom(row);
+        }
       } catch (e) {
-        console.error('[YT Bulk Upload] sort move failed', e);
+        console.error('[YT Bulk Upload] sort move failed for', name, e);
       }
       done++;
-      setStatus(`Sorting… ${done}/${items.length}`);
+      setStatus(`Sorting… ${done}/${order.length}`);
       await sleep(1000);
     }
-    setStatus(`Done. Sorted ${items.length} playlist video(s).`);
+    setStatus(`Done. Sorted ${order.length} playlist video(s).`);
   }
 
   // ── UI ─────────────────────────────────────────────────────
 
   registerInjector(function injectPublish() {
-    if (document.getElementById('yt-publish-btn')) return;
     const body = ensureControls();
     if (!body) return;
 
-    // Visibility selector
-    const visChip = controlChip();
-    visChip.appendChild(document.createTextNode('Visibility'));
-    const sel = document.createElement('select');
-    sel.id = 'yt-visibility-select';
-    Object.assign(sel.style, { fontSize: '12px', cursor: 'pointer' });
-    for (const v of ['Public', 'Unlisted', 'Private']) {
-      const opt = document.createElement('option');
-      opt.value = v;
-      opt.textContent = v;
-      sel.appendChild(opt);
+    // Publish drafts + its settings live in Studio.
+    if (NS.isStudio && !document.getElementById('yt-publish-btn')) {
+      // Visibility selector
+      const visChip = controlChip();
+      visChip.appendChild(document.createTextNode('Visibility'));
+      const sel = document.createElement('select');
+      sel.id = 'yt-visibility-select';
+      Object.assign(sel.style, { fontSize: '12px', cursor: 'pointer' });
+      for (const v of ['Public', 'Unlisted', 'Private']) {
+        const opt = document.createElement('option');
+        opt.value = v;
+        opt.textContent = v;
+        sel.appendChild(opt);
+      }
+      sel.value = settings.visibility;
+      sel.addEventListener('change', () => {
+        settings.visibility = sel.value;
+        saveSettings();
+      });
+      visChip.appendChild(sel);
+
+      // Made-for-kids toggle
+      const mfkChip = controlChip();
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.id = 'yt-mfk-checkbox';
+      cb.checked = settings.madeForKids;
+      cb.style.cursor = 'pointer';
+      cb.addEventListener('change', () => {
+        settings.madeForKids = cb.checked;
+        saveSettings();
+      });
+      mfkChip.appendChild(cb);
+      mfkChip.appendChild(document.createTextNode('Made for kids'));
+
+      const pubBtn = button('📢 Publish Drafts', '#9147ff');
+      pubBtn.id = 'yt-publish-btn';
+      pubBtn.addEventListener('click', () => runExclusive(publishDrafts));
+
+      body.appendChild(visChip);
+      body.appendChild(mfkChip);
+      body.appendChild(pubBtn);
+      console.log('[YT Bulk Upload] publish controls injected');
     }
-    sel.value = settings.visibility;
-    sel.addEventListener('change', () => {
-      settings.visibility = sel.value;
-      saveSettings();
-    });
-    visChip.appendChild(sel);
 
-    // Made-for-kids toggle
-    const mfkChip = controlChip();
-    const cb = document.createElement('input');
-    cb.type = 'checkbox';
-    cb.id = 'yt-mfk-checkbox';
-    cb.checked = settings.madeForKids;
-    cb.style.cursor = 'pointer';
-    cb.addEventListener('change', () => {
-      settings.madeForKids = cb.checked;
-      saveSettings();
-    });
-    mfkChip.appendChild(cb);
-    mfkChip.appendChild(document.createTextNode('Made for kids'));
-
-    const pubBtn = button('📢 Publish Drafts', '#9147ff');
-    pubBtn.id = 'yt-publish-btn';
-    pubBtn.addEventListener('click', () => runExclusive(publishDrafts));
-
-    const sortBtn = button('↕ Sort Playlist', '#0a8f57');
-    sortBtn.id = 'yt-sort-btn';
-    sortBtn.addEventListener('click', () => runExclusive(sortPlaylist));
-
-    body.appendChild(visChip);
-    body.appendChild(mfkChip);
-    body.appendChild(pubBtn);
-    body.appendChild(sortBtn);
-    console.log('[YT Bulk Upload] publish/sort controls injected');
+    // Sort playlist lives on the main site's playlist pages.
+    if (NS.isYouTube && !document.getElementById('yt-sort-btn')) {
+      const sortBtn = button('↕ Sort Playlist', '#0a8f57');
+      sortBtn.id = 'yt-sort-btn';
+      sortBtn.addEventListener('click', () => runExclusive(sortPlaylist));
+      body.appendChild(sortBtn);
+      console.log('[YT Bulk Upload] sort control injected');
+    }
   });
 
   // Keep the controls in sync with stored settings once they load.

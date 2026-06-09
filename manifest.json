@@ -5,7 +5,8 @@
   "description": "Bulk-upload many videos to YouTube Studio in one pick, bypassing the 15-file selection limit",
   "permissions": ["storage"],
   "host_permissions": [
-    "https://studio.youtube.com/*"
+    "https://studio.youtube.com/*",
+    "https://www.youtube.com/*"
   ],
   "action": {
     "default_title": "Open YouTube Studio bulk upload"
@@ -15,7 +16,7 @@
   },
   "content_scripts": [
     {
-      "matches": ["https://studio.youtube.com/*"],
+      "matches": ["https://studio.youtube.com/*", "https://www.youtube.com/*"],
       "js": ["shared.js", "content.js", "publish.js"],
       "run_at": "document_idle"
     }
